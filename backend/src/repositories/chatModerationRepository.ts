@@ -29,6 +29,24 @@ export type ChatWarningRecord = {
   admin_pseudo: string;
 };
 
+export type ChatWarningListRecord = {
+  id: string;
+  user_id: string;
+  admin_user_id: string;
+  reason: string;
+  created_at: string;
+  user_pseudo: string;
+  admin_pseudo: string;
+};
+
+type WarningFilters = {
+  userId?: string;
+  targetPseudo?: string;
+  from?: string;
+  to?: string;
+  excludeRange?: boolean;
+};
+
 export type UserModerationStatus = {
   is_banned: boolean;
   ban_expires_at: string | null;
@@ -42,7 +60,7 @@ export type UserModerationStatus = {
 /**
  * Vérifie si un utilisateur est banni
  */
-export async function isUserBanned(userId: string): Promise<boolean> {
+export async function isUserBanned(userId: string): Promise<ChatBanRecord | null> {
   const result = await db.query<ChatBanRecord>(
     `
       SELECT id, user_id, admin_user_id, reason, expires_at, created_at, is_active
@@ -52,13 +70,13 @@ export async function isUserBanned(userId: string): Promise<boolean> {
     `,
     [userId]
   );
-  return result.rows.length > 0;
+  return result.rows[0] || null;
 }
 
 /**
  * Vérifie si un utilisateur est muet
  */
-export async function isUserMuted(userId: string): Promise<boolean> {
+export async function isUserMuted(userId: string): Promise<ChatMuteRecord | null> {
   const result = await db.query<ChatMuteRecord>(
     `
       SELECT id, user_id, admin_user_id, reason, expires_at, created_at, is_active
@@ -68,7 +86,7 @@ export async function isUserMuted(userId: string): Promise<boolean> {
     `,
     [userId]
   );
-  return result.rows.length > 0;
+  return result.rows[0] || null;
 }
 
 /**
@@ -159,6 +177,21 @@ export async function unbanUser(userId: string): Promise<boolean> {
   return result.rows.length > 0;
 }
 
+export async function listUserBans(userId: string, limit: number = 50): Promise<ChatBanRecord[]> {
+  const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)));
+  const result = await db.query<ChatBanRecord>(
+    `
+      SELECT id, user_id, admin_user_id, reason, expires_at, created_at, is_active
+      FROM chat_bans
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2
+    `,
+    [userId, safeLimit]
+  );
+  return result.rows;
+}
+
 /**
  * Rend muet un utilisateur
  */
@@ -192,6 +225,37 @@ export async function muteUser(userId: string, adminUserId: string, reason: stri
   } finally {
     client.release();
   }
+}
+
+/**
+ * Dé-mute un utilisateur
+ */
+export async function unmuteUser(userId: string): Promise<boolean> {
+  const result = await db.query(
+    `
+      UPDATE chat_mutes 
+      SET is_active = FALSE 
+      WHERE user_id = $1 AND is_active = TRUE
+      RETURNING id
+    `,
+    [userId]
+  );
+  return result.rows.length > 0;
+}
+
+export async function listUserMutes(userId: string, limit: number = 50): Promise<ChatMuteRecord[]> {
+  const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)));
+  const result = await db.query<ChatMuteRecord>(
+    `
+      SELECT id, user_id, admin_user_id, reason, expires_at, created_at, is_active
+      FROM chat_mutes
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2
+    `,
+    [userId, safeLimit]
+  );
+  return result.rows;
 }
 
 /**
@@ -249,6 +313,86 @@ export async function listUserWarnings(userId: string, limit: number = 50): Prom
     [userId, safeLimit]
   );
   return result.rows;
+}
+
+function buildWarningFilters(filters: WarningFilters): { clause: string; values: Array<string | number> } {
+  const values: Array<string | number> = [];
+  const clauses: string[] = [];
+
+  if (filters.userId) {
+    values.push(filters.userId);
+    clauses.push(`w.user_id = $${values.length}`);
+  }
+
+  if (filters.targetPseudo) {
+    values.push(filters.targetPseudo);
+    clauses.push(`LOWER(target.pseudo) = LOWER($${values.length})`);
+  }
+
+  if (filters.from && filters.to) {
+    values.push(filters.from);
+    values.push(filters.to);
+    clauses.push(
+      filters.excludeRange
+        ? `(w.created_at < $${values.length - 1} OR w.created_at > $${values.length})`
+        : `w.created_at >= $${values.length - 1} AND w.created_at <= $${values.length}`
+    );
+  } else if (filters.from) {
+    values.push(filters.from);
+    clauses.push(filters.excludeRange ? `w.created_at < $${values.length}` : `w.created_at >= $${values.length}`);
+  } else if (filters.to) {
+    values.push(filters.to);
+    clauses.push(filters.excludeRange ? `w.created_at > $${values.length}` : `w.created_at <= $${values.length}`);
+  }
+
+  return { clause: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "", values };
+}
+
+export async function listWarningsWithFilters(
+  filters: WarningFilters & { limit?: number; offset?: number }
+): Promise<ChatWarningListRecord[]> {
+  const safeLimit = Math.max(1, Math.min(200, Math.floor(filters.limit ?? 50)));
+  const safeOffset = Math.max(0, Math.floor(filters.offset ?? 0));
+  const { clause, values } = buildWarningFilters(filters);
+  const limitIndex = values.length + 1;
+  const offsetIndex = values.length + 2;
+
+  const result = await db.query<ChatWarningListRecord>(
+    `
+      SELECT 
+        w.id,
+        w.user_id,
+        w.admin_user_id,
+        w.reason,
+        w.created_at,
+        target.pseudo as user_pseudo,
+        admin.pseudo as admin_pseudo
+      FROM chat_warnings w
+      JOIN users target ON target.id = w.user_id
+      JOIN users admin ON admin.id = w.admin_user_id
+      ${clause}
+      ORDER BY w.created_at DESC
+      LIMIT $${limitIndex}
+      OFFSET $${offsetIndex}
+    `,
+    [...values, safeLimit, safeOffset]
+  );
+  return result.rows;
+}
+
+export async function countWarningsWithFilters(filters: WarningFilters): Promise<number> {
+  const { clause, values } = buildWarningFilters(filters);
+  const result = await db.query(
+    `
+      SELECT COUNT(*) as count
+      FROM chat_warnings w
+      JOIN users target ON target.id = w.user_id
+      JOIN users admin ON admin.id = w.admin_user_id
+      ${clause}
+    `,
+    values
+  );
+  return parseInt(result.rows[0]?.count ?? "0");
 }
 
 /**

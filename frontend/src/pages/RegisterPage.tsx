@@ -68,6 +68,12 @@ export function RegisterPage(): JSX.Element {
 
         <form className="card form auth-form-card" onSubmit={onSubmit}>
           <h2>{t("auth.registerButton")}</h2>
+          <div className="auth-info-box">
+            <p>
+              L’inscription et la connexion via Discord ou Stoat seront bientôt disponibles et sont en cours de
+              développement. Merci pour votre patience.
+            </p>
+          </div>
           <label>
             {t("auth.username")}
             <input value={pseudo} onChange={(event) => setPseudo(event.target.value)} required />

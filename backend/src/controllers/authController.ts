@@ -1,7 +1,5 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
-import crypto from "node:crypto";
-import { env } from "../config/env.js";
 import { comparePassword, hashPassword } from "../utils/password.js";
 import { createUser, findUserByEmail, findUserById, updateLastLogin, isUserAmongFirst100, getBadgeIdBySlug, assignBadgeToUser } from "../repositories/userRepository.js";
 import { signAccessToken } from "../utils/jwt.js";
@@ -22,74 +20,6 @@ import {
   generate2FAEmailTemplate
 } from "../services/emailService.js";
 
-type OidcDiscovery = {
-  issuer: string;
-  authorization_endpoint: string;
-  token_endpoint: string;
-  userinfo_endpoint: string;
-};
-
-let authentikDiscoveryCache: { issuer: string; value: OidcDiscovery; fetchedAt: number } | null = null;
-
-async function getAuthentikDiscovery(): Promise<OidcDiscovery> {
-  const issuer = env.AUTHENTIK_ISSUER;
-  if (!issuer) {
-    throw new Error("Authentik n'est pas configuré.");
-  }
-  const now = Date.now();
-  if (authentikDiscoveryCache && authentikDiscoveryCache.issuer === issuer && now - authentikDiscoveryCache.fetchedAt < 10 * 60 * 1000) {
-    return authentikDiscoveryCache.value;
-  }
-  const url = `${issuer.replace(/\/$/, "")}/.well-known/openid-configuration`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error("Impossible de charger la configuration OIDC.");
-  }
-  const data = (await response.json()) as Partial<OidcDiscovery>;
-  if (!data.authorization_endpoint || !data.token_endpoint || !data.userinfo_endpoint || !data.issuer) {
-    throw new Error("Configuration OIDC invalide.");
-  }
-  const discovery: OidcDiscovery = {
-    issuer: data.issuer,
-    authorization_endpoint: data.authorization_endpoint,
-    token_endpoint: data.token_endpoint,
-    userinfo_endpoint: data.userinfo_endpoint
-  };
-  authentikDiscoveryCache = { issuer, value: discovery, fetchedAt: now };
-  return discovery;
-}
-
-function buildFrontendBaseUrl(req: Request): string {
-  const origin = req.headers.origin;
-  if (typeof origin === "string") return origin;
-  return env.CORS_ORIGIN;
-}
-
-function buildStateJwt(payload: { nonce: string; next: string }): string {
-  const value = JSON.stringify({ ...payload, exp: Date.now() + 10 * 60 * 1000 });
-  const encoded = Buffer.from(value, "utf-8").toString("base64url");
-  const sig = crypto.createHmac("sha256", env.JWT_SECRET).update(encoded).digest("base64url");
-  return `${encoded}.${sig}`;
-}
-
-function readStateJwt(state: string): { nonce: string; next: string } | null {
-  try {
-    const [encoded, sig] = state.split(".");
-    if (!encoded || !sig) return null;
-    const expectedSig = crypto.createHmac("sha256", env.JWT_SECRET).update(encoded).digest("base64url");
-    const sigOk =
-      Buffer.byteLength(sig) === Buffer.byteLength(expectedSig) &&
-      crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig));
-    if (!sigOk) return null;
-    const raw = Buffer.from(encoded, "base64url").toString("utf-8");
-    const parsed = JSON.parse(raw) as { nonce: string; next: string; exp: number };
-    if (!parsed.nonce || !parsed.next || typeof parsed.exp !== "number") return null;
-    if (Date.now() > parsed.exp) return null;
-    return { nonce: parsed.nonce, next: parsed.next };
-  } catch {
-    return null;
-  }
-}
 
 const registerSchema = z
   .object({
@@ -322,97 +252,6 @@ export async function verify2FA(req: Request, res: Response): Promise<void> {
   });
 }
 
-export async function authentikAdminSsoLogin(req: Request, res: Response): Promise<void> {
-  if (!env.AUTHENTIK_ISSUER || !env.AUTHENTIK_CLIENT_ID || !env.AUTHENTIK_CLIENT_SECRET || !env.AUTHENTIK_REDIRECT_URI) {
-    res.status(501).json({ message: "SSO Authentik non configuré." });
-    return;
-  }
-  const discovery = await getAuthentikDiscovery();
-  const nonce = crypto.randomBytes(16).toString("hex");
-  const next = typeof req.query.next === "string" ? req.query.next : "/admin";
-  const state = buildStateJwt({ nonce, next });
-  const authorizeUrl = new URL(discovery.authorization_endpoint);
-  authorizeUrl.searchParams.set("client_id", env.AUTHENTIK_CLIENT_ID);
-  authorizeUrl.searchParams.set("redirect_uri", env.AUTHENTIK_REDIRECT_URI);
-  authorizeUrl.searchParams.set("response_type", "code");
-  authorizeUrl.searchParams.set("scope", "openid email profile");
-  authorizeUrl.searchParams.set("state", state);
-  authorizeUrl.searchParams.set("nonce", nonce);
-  res.redirect(authorizeUrl.toString());
-}
-
-export async function authentikAdminSsoCallback(req: Request, res: Response): Promise<void> {
-  if (!env.AUTHENTIK_ISSUER || !env.AUTHENTIK_CLIENT_ID || !env.AUTHENTIK_CLIENT_SECRET || !env.AUTHENTIK_REDIRECT_URI) {
-    res.status(501).json({ message: "SSO Authentik non configuré." });
-    return;
-  }
-  const code = typeof req.query.code === "string" ? req.query.code : null;
-  const state = typeof req.query.state === "string" ? req.query.state : null;
-  if (!code || !state) {
-    res.status(400).json({ message: "Paramètres SSO manquants." });
-    return;
-  }
-  const parsedState = readStateJwt(state);
-  if (!parsedState) {
-    res.status(400).json({ message: "State SSO invalide." });
-    return;
-  }
-
-  const discovery = await getAuthentikDiscovery();
-  const tokenResponse = await fetch(discovery.token_endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: env.AUTHENTIK_REDIRECT_URI,
-      client_id: env.AUTHENTIK_CLIENT_ID,
-      client_secret: env.AUTHENTIK_CLIENT_SECRET
-    })
-  });
-
-  const tokenJson = (await tokenResponse.json().catch(() => ({}))) as {
-    access_token?: string;
-  };
-  if (!tokenResponse.ok || !tokenJson.access_token) {
-    res.status(401).json({ message: "Échange du code SSO impossible." });
-    return;
-  }
-
-  const userinfoResponse = await fetch(discovery.userinfo_endpoint, {
-    headers: { Authorization: `Bearer ${tokenJson.access_token}` }
-  });
-  const userinfo = (await userinfoResponse.json().catch(() => ({}))) as {
-    email?: string;
-  };
-  if (!userinfoResponse.ok || !userinfo.email) {
-    res.status(401).json({ message: "Impossible de récupérer le profil SSO." });
-    return;
-  }
-
-  const user = await findUserByEmail(userinfo.email);
-  if (!user || user.role !== "admin") {
-    res.status(403).json({ message: "Accès admin refusé." });
-    return;
-  }
-
-  await updateLastLogin(user.id);
-  const token = signAccessToken({ sub: user.id, email: user.email, role: user.role });
-  const frontendBase = buildFrontendBaseUrl(req).replace(/\/$/, "");
-  const next = parsedState.next.startsWith("/") ? parsedState.next : "/admin";
-  const userPayload = {
-    id: user.id,
-    pseudo: user.pseudo,
-    email: user.email,
-    avatar_url: user.avatar_url,
-    email_verified: user.email_verified,
-    two_factor_enabled: user.two_factor_enabled,
-    role: user.role
-  };
-  const userB64 = Buffer.from(JSON.stringify(userPayload), "utf-8").toString("base64");
-  const redirectUrl = `${frontendBase}/sso/authentik#token=${encodeURIComponent(token)}&user=${encodeURIComponent(userB64)}&next=${encodeURIComponent(next)}`;
-  res.redirect(redirectUrl);
-}
 
 export async function resendCode(req: Request, res: Response): Promise<void> {
   const payload = resendCodeSchema.parse(req.body);

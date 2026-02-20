@@ -47,6 +47,12 @@ export function AddServerPage(): JSX.Element {
   const isDiscord = selectedCategory?.slug === "discord";
   const isStoat = selectedCategory?.slug === "stoat";
   const isCommunity = isDiscord || isStoat;
+  const inviteLinkPreview = isDiscord
+    ? `https://discord.gg/${inviteId || "invite"}`
+    : isStoat
+      ? `https://stt.gg/${inviteId || "invite"}`
+      : "";
+  const connectionPreview = isCommunity ? inviteLinkPreview : ip ? `${ip}:${port || 25565}` : "IP:PORT";
 
   useEffect(() => {
     async function loadCategories(): Promise<void> {
@@ -105,109 +111,170 @@ export function AddServerPage(): JSX.Element {
 
   if (!isAuthenticated) {
     return (
-      <section className="page">
-        <h1>Ajouter serveur</h1>
-        <p>Vous devez être connecté pour ajouter un serveur.</p>
+      <section className="page add-server-page">
+        <div className="card add-server-auth">
+          <h1>Ajouter un serveur</h1>
+          <p>Connectez-vous pour publier votre serveur.</p>
+        </div>
       </section>
     );
   }
 
   return (
-    <section className="page narrow">
-      <h1>Ajouter un serveur</h1>
-      <form className="card form" onSubmit={onSubmit}>
-        <label>
-          Catégorie
-          <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>
-            {gamingCategories.length > 0 && (
-              <optgroup label="Gaming">
-                {gamingCategories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.label}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-            {communityCategories.length > 0 && (
-              <optgroup label="Communauté">
-                {communityCategories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.label}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </select>
-        </label>
+    <section className="page add-server-page">
+      <div className="add-server-hero card">
+        <div>
+          <h1>Ajouter un serveur</h1>
+          <p>Renseignez les informations essentielles pour apparaître dans l’annuaire.</p>
+        </div>
+        <ul className="add-server-steps">
+          <li>Choisissez une catégorie</li>
+          <li>Décrivez clairement votre serveur</li>
+          <li>Ajoutez un lien ou une IP valide</li>
+        </ul>
+      </div>
 
-        <label>
-          Nom du serveur
-          <input value={name} onChange={(event) => setName(event.target.value)} required />
-        </label>
-
-        <label>
-          Site web
-          <input type="url" value={website} onChange={(event) => setWebsite(event.target.value)} />
-        </label>
-
-        <label>
-          Description
-          <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={5} required />
-        </label>
-
-        <label>
-          Banniere serveur (945x290) - lien Imgur
-          <input
-            type="url"
-            value={bannerUrl}
-            onChange={(event) => setBannerUrl(event.target.value)}
-            placeholder="https://imgur.com/... ou https://i.imgur.com/..."
-          />
-        </label>
-
-        <label>
-          Pays
-          <select value={countryCode} onChange={(event) => setCountryCode(event.target.value)} required>
-            {COUNTRIES.map((country) => (
-              <option key={country.code} value={country.code}>
-                {country.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {!isCommunity ? (
-          <>
+      <div className="add-server-layout">
+        <form className="card form add-server-form" onSubmit={onSubmit}>
+          <div className="add-server-section">
+            <div className="add-server-section-head">
+              <h2>Informations</h2>
+              <p>Les détails principaux visibles par les membres.</p>
+            </div>
+            <div className="add-server-grid">
+              <label>
+                Catégorie
+                <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>
+                  {gamingCategories.length > 0 && (
+                    <optgroup label="Gaming">
+                      {gamingCategories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {communityCategories.length > 0 && (
+                    <optgroup label="Communauté">
+                      {communityCategories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </label>
+              <label>
+                Nom du serveur
+                <input value={name} onChange={(event) => setName(event.target.value)} required />
+              </label>
+              <label>
+                Site web
+                <input type="url" value={website} onChange={(event) => setWebsite(event.target.value)} />
+              </label>
+              <label>
+                Pays
+                <select value={countryCode} onChange={(event) => setCountryCode(event.target.value)} required>
+                  {COUNTRIES.map((country) => (
+                    <option key={country.code} value={country.code}>
+                      {country.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
             <label>
-              IP serveur
-              <input value={ip} onChange={(event) => setIp(event.target.value)} required />
+              Description
+              <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={5} required />
             </label>
+          </div>
+
+          <div className="add-server-section">
+            <div className="add-server-section-head">
+              <h2>Visuel</h2>
+              <p>Ajoutez une bannière pour un rendu plus pro.</p>
+            </div>
             <label>
-              Port
+              Banniere serveur (945x290)
               <input
-                type="number"
-                value={port}
-                onChange={(event) => setPort(Number(event.target.value))}
-                required
+                type="url"
+                value={bannerUrl}
+                onChange={(event) => setBannerUrl(event.target.value)}
+                placeholder="https://i.imgur.com/..."
               />
             </label>
-            <label className="inline-control">
-              <input type="checkbox" checked={isPublic} onChange={(event) => setIsPublic(event.target.checked)} />
-              Serveur public
-            </label>
-          </>
-        ) : (
-          <label>
-            {isDiscord ? "ID invitation (https://discord.gg/)" : "ID Stoat (https://stt.gg/)"}
-            <input value={inviteId} onChange={(event) => setInviteId(event.target.value)} required />
-          </label>
-        )}
+          </div>
 
-        {error && <p className="error-text">{error}</p>}
-        <button className="btn" type="submit">
-          Publier
-        </button>
-      </form>
+          <div className="add-server-section">
+            <div className="add-server-section-head">
+              <h2>Connexion</h2>
+              <p>Comment rejoindre votre serveur.</p>
+            </div>
+            {!isCommunity ? (
+              <div className="add-server-grid">
+                <label>
+                  IP serveur
+                  <input value={ip} onChange={(event) => setIp(event.target.value)} required />
+                </label>
+                <label>
+                  Port
+                  <input
+                    type="number"
+                    value={port}
+                    onChange={(event) => setPort(Number(event.target.value))}
+                    required
+                  />
+                </label>
+                <label className="inline-control add-server-toggle">
+                  <input type="checkbox" checked={isPublic} onChange={(event) => setIsPublic(event.target.checked)} />
+                  Serveur public
+                </label>
+              </div>
+            ) : (
+              <label>
+                {isDiscord ? "ID invitation (discord.gg)" : "ID Stoat (stt.gg)"}
+                <input value={inviteId} onChange={(event) => setInviteId(event.target.value)} required />
+              </label>
+            )}
+          </div>
+
+          {error && <p className="error-text">{error}</p>}
+          <button className="btn add-server-submit" type="submit">
+            Publier le serveur
+          </button>
+        </form>
+
+        <aside className="add-server-side">
+          <article className="card add-server-summary">
+            <h2>Aperçu</h2>
+            <div className="add-server-preview">
+              <h3>{name || "Nom du serveur"}</h3>
+              <p>{selectedCategory?.label || "Catégorie"}</p>
+              <p>{countryCode}</p>
+              {website && <a href={website} target="_blank" rel="noreferrer">{website}</a>}
+              <div className="add-server-preview-row">
+                <span>Connexion</span>
+                <strong>{connectionPreview}</strong>
+              </div>
+            </div>
+            {bannerUrl ? (
+              <img className="add-server-banner" src={bannerUrl} alt="Banniere du serveur" loading="lazy" />
+            ) : (
+              <div className="add-server-banner-placeholder">Aperçu bannière</div>
+            )}
+          </article>
+
+          <article className="card add-server-help">
+            <h3>Conseils</h3>
+            <ul>
+              <li>Une description claire augmente les clics.</li>
+              <li>Ajoutez une bannière cohérente avec votre thème.</li>
+              <li>Vérifiez l’IP ou le lien d’invitation.</li>
+            </ul>
+          </article>
+        </aside>
+      </div>
     </section>
   );
 }

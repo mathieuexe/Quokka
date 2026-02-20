@@ -78,6 +78,11 @@ export async function findUserById(id: string): Promise<DbUser | null> {
   return result.rows[0] ?? null;
 }
 
+export async function findUserByPseudo(pseudo: string): Promise<DbUser | null> {
+  const result = await db.query<DbUser>("SELECT * FROM users WHERE LOWER(pseudo) = LOWER($1) LIMIT 1", [pseudo]);
+  return result.rows[0] ?? null;
+}
+
 export async function createUser(params: {
   pseudo: string;
   email: string;

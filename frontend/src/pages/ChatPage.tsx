@@ -16,13 +16,20 @@ type ChatMessage = {
 
 type ChatMessagesResponse = { messages: ChatMessage[] };
 
+type CassierResponse = {
+  bans: Array<{ id: string; reason: string; expiresAt: string | null; createdAt: string; isActive: boolean }>;
+  mutes: Array<{ id: string; reason: string; expiresAt: string | null; createdAt: string; isActive: boolean }>;
+  warnings: Array<{ id: string; reason: string; createdAt: string; adminPseudo: string; isActive: boolean }>;
+};
+
 const ADMIN_COMMANDS: Array<{ command: string; description: string }> = [
   { command: "/clear", description: "Efface le tchat" },
   { command: "/maintenance-on", description: "Active la maintenance" },
   { command: "/maintenance-off", description: "Désactive la maintenance" },
-  { command: "/ban", description: "Bannir un utilisateur (@pseudo [durée] [motif])" },
+  { command: "/ban", description: "Bannir un utilisateur (@pseudo [durée en minutes] [motif])" },
   { command: "/unban", description: "Débannir un utilisateur (@pseudo)" },
-  { command: "/mute", description: "Rendre muet un utilisateur (@pseudo [durée] [motif])" },
+  { command: "/mute", description: "Rendre muet un utilisateur (@pseudo [durée en minutes] [motif])" },
+  { command: "/unmute", description: "Rendre la parole à un utilisateur (@pseudo)" },
   { command: "/warn", description: "Avertir un utilisateur (@pseudo [motif])" },
   { command: "/warnings", description: "Voir les avertissements (@pseudo)" }
 ];
@@ -355,8 +362,78 @@ export function ChatPage(): JSX.Element {
       return;
     }
 
+    if (normalized === "/cassier") {
+      setSending(true);
+      setError(null);
+      try {
+        const result = await apiRequest<CassierResponse>("/chat/moderation/cassier?limit=50", { token });
+        const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit"
+        });
+
+        const lines: string[] = [];
+        lines.push("📋 Votre casier de modération");
+        lines.push("");
+        lines.push("Bannissements:");
+        if (result.bans.length === 0) {
+          lines.push("Aucun bannissement.");
+        } else {
+          result.bans.forEach((ban) => {
+            const status = ban.isActive ? "Actif" : "Inactif";
+            const endLabel = ban.expiresAt ? `jusqu'au ${dateFormatter.format(new Date(ban.expiresAt))}` : "permanent";
+            lines.push(`- [${status}] ${endLabel} — ${ban.reason}`);
+          });
+        }
+        lines.push("");
+        lines.push("Mutes:");
+        if (result.mutes.length === 0) {
+          lines.push("Aucun mute.");
+        } else {
+          result.mutes.forEach((mute) => {
+            const status = mute.isActive ? "Actif" : "Inactif";
+            const endLabel = mute.expiresAt ? `jusqu'au ${dateFormatter.format(new Date(mute.expiresAt))}` : "permanent";
+            lines.push(`- [${status}] ${endLabel} — ${mute.reason}`);
+          });
+        }
+        lines.push("");
+        lines.push("Avertissements:");
+        if (result.warnings.length === 0) {
+          lines.push("Aucun avertissement.");
+        } else {
+          result.warnings.forEach((warning) => {
+            const status = warning.isActive ? "Actif" : "Inactif";
+            lines.push(`- [${status}] ${dateFormatter.format(new Date(warning.createdAt))} — ${warning.reason} (par ${warning.adminPseudo})`);
+          });
+          lines.push("Actif = avertissement de moins de 30 jours.");
+        }
+
+        const localMsg: ChatMessage = {
+          id: "local-" + Date.now(),
+          user_id: null,
+          user_pseudo: "Système",
+          user_avatar_url: null,
+          user_role: "system",
+          message_type: "system",
+          message: lines.join("\n"),
+          created_at: new Date().toISOString()
+        };
+        setMessages((current) => [...current, localMsg].slice(-200));
+        setText("");
+        scrollToBottom();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Impossible de récupérer le casier.");
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     // Handle moderation commands
-    if (normalized.startsWith("/ban ") || normalized.startsWith("/unban ") || normalized.startsWith("/mute ") || normalized.startsWith("/warn ") || normalized.startsWith("/warnings ")) {
+    if (normalized.startsWith("/ban ") || normalized.startsWith("/unban ") || normalized.startsWith("/mute ") || normalized.startsWith("/unmute ") || normalized.startsWith("/warn ") || normalized.startsWith("/warnings ")) {
       if (user?.role !== "admin") {
         setError("Commande réservée aux administrateurs.");
         return;
@@ -373,17 +450,30 @@ export function ChatPage(): JSX.Element {
           const args = normalized.slice(5).trim();
           const parts = args.split(" ");
           if (parts.length < 2) {
-            setError("Usage: /ban @pseudo [durée] [motif] (ex: /ban @user 24h Spam)");
+            setError("Usage: /ban @pseudo [durée en minutes] [motif] (ex: /ban @user 30m Spam)");
             setSending(false);
             return;
           }
           
           const targetUser = parts[0].replace("@", "");
-          const duration = parts[1];
+          const durationStr = parts[1].toLowerCase();
+          let durationHours: number | undefined;
+
+          if (durationStr === "permanent") {
+            durationHours = undefined;
+          } else if (durationStr.endsWith("h")) {
+            durationHours = parseFloat(durationStr.replace("h", ""));
+          } else {
+            const minutesValue = durationStr.endsWith("m")
+              ? parseFloat(durationStr.replace("m", ""))
+              : parseFloat(durationStr);
+            durationHours = minutesValue / 60;
+          }
+
           const reason = parts.slice(2).join(" ") || "Aucune raison spécifiée";
           
           endpoint = "/chat/moderation/ban";
-          body = { targetUser, duration, reason };
+          body = { targetUser, durationHours, reason };
           
         } else if (normalized.startsWith("/unban ")) {
           const targetUser = normalized.slice(7).trim().replace("@", "");
@@ -400,17 +490,41 @@ export function ChatPage(): JSX.Element {
           const args = normalized.slice(6).trim();
           const parts = args.split(" ");
           if (parts.length < 2) {
-            setError("Usage: /mute @pseudo [durée] [motif] (ex: /mute @user 1h Spam)");
+            setError("Usage: /mute @pseudo [durée en minutes] [motif] (ex: /mute @user 30m Spam)");
             setSending(false);
             return;
           }
           
           const targetUser = parts[0].replace("@", "");
-          const duration = parts[1];
+          const durationStr = parts[1].toLowerCase();
+          let durationHours: number | undefined;
+
+          if (durationStr === "permanent") {
+            durationHours = undefined;
+          } else if (durationStr.endsWith("h")) {
+            durationHours = parseFloat(durationStr.replace("h", ""));
+          } else {
+            const minutesValue = durationStr.endsWith("m")
+              ? parseFloat(durationStr.replace("m", ""))
+              : parseFloat(durationStr);
+            durationHours = minutesValue / 60;
+          }
+
           const reason = parts.slice(2).join(" ") || "Aucune raison spécifiée";
           
           endpoint = "/chat/moderation/mute";
-          body = { targetUser, duration, reason };
+          body = { targetUser, durationHours, reason };
+          
+        } else if (normalized.startsWith("/unmute ")) {
+          const targetUser = normalized.slice(8).trim().replace("@", "");
+          if (!targetUser) {
+            setError("Usage: /unmute @pseudo");
+            setSending(false);
+            return;
+          }
+          
+          endpoint = "/chat/moderation/unmute";
+          body = { targetUser };
           
         } else if (normalized.startsWith("/warn ")) {
           const args = normalized.slice(6).trim();
@@ -439,14 +553,34 @@ export function ChatPage(): JSX.Element {
           body = { targetUser };
         }
         
-        const result = await apiRequest<{ message: ChatMessage }>(endpoint, {
+        const result = await apiRequest<any>(endpoint, {
           method: "POST",
           token,
           body
         });
         
+        if (endpoint.includes("/warnings")) {
+          const warningsList = result.warnings.map((w: any) => 
+            `- ${new Date(w.createdAt).toLocaleDateString()} par ${w.adminPseudo}: ${w.reason}`
+          ).join("\n");
+          
+          const localMsg: ChatMessage = {
+            id: "local-" + Date.now(),
+            user_id: null,
+            user_pseudo: "Système",
+            user_avatar_url: null,
+            user_role: "system",
+            message_type: "system",
+            message: `Avertissements pour ${body.targetUser} (${result.totalCount}):\n${warningsList || "Aucun avertissement."}`,
+            created_at: new Date().toISOString()
+          };
+          setMessages((current) => [...current, localMsg].slice(-200));
+        } else {
+          // For other commands, rely on polling to show the system message
+          // But we can show a success toast or just clear the input
+        }
+        
         setText("");
-        setMessages((current) => [...current, result.message].slice(-200));
         scrollToBottom();
         
       } catch (e) {
@@ -554,7 +688,7 @@ export function ChatPage(): JSX.Element {
                           className="chat-action-btn chat-action-mute"
                           title={`Rendre muet ${msg.user_pseudo}`}
                           onClick={() => {
-                            const duration = prompt(`Durée pour rendre ${msg.user_pseudo} muet ? (ex: 1h, 24h, permanent)`);
+                            const duration = prompt(`Durée pour rendre ${msg.user_pseudo} muet ? (ex: 30m, 90m, permanent)`);
                             if (duration) {
                               const reason = prompt("Motif du mute (optionnel):") || "Aucune raison spécifiée";
                               setText(`/mute @${msg.user_pseudo} ${duration} ${reason}`);
@@ -569,7 +703,7 @@ export function ChatPage(): JSX.Element {
                           className="chat-action-btn chat-action-ban"
                           title={`Bannir ${msg.user_pseudo}`}
                           onClick={() => {
-                            const duration = prompt(`Durée pour bannir ${msg.user_pseudo} ? (ex: 1h, 24h, permanent)`);
+                            const duration = prompt(`Durée pour bannir ${msg.user_pseudo} ? (ex: 30m, 120m, permanent)`);
                             if (duration) {
                               const reason = prompt("Motif du ban (optionnel):") || "Aucune raison spécifiée";
                               setText(`/ban @${msg.user_pseudo} ${duration} ${reason}`);
@@ -830,15 +964,15 @@ export function ChatPage(): JSX.Element {
                   <li>/clear — efface le tchat</li>
                   <li>/maintenance-on — active la maintenance</li>
                   <li>/maintenance-off — désactive la maintenance</li>
-                  <li>/ban @pseudo [durée] [motif] — bannir un utilisateur</li>
+                  <li>/ban @pseudo [durée en minutes] [motif] — bannir un utilisateur</li>
                   <li>/unban @pseudo — débannir un utilisateur</li>
-                  <li>/mute @pseudo [durée] [motif] — rendre muet un utilisateur</li>
+                  <li>/mute @pseudo [durée en minutes] [motif] — rendre muet un utilisateur</li>
                   <li>/warn @pseudo [motif] — avertir un utilisateur</li>
                   <li>/warnings @pseudo — voir les avertissements d'un utilisateur</li>
                 </ul>
                 <p className="chat-admin-note">
-                  <strong>Note:</strong> La durée peut être en heures (ex: 24h) ou "permanent". 
-                  Exemple: /ban @user 24h Spam répété
+                  <strong>Note:</strong> La durée est en minutes (suffixe m optionnel) ou "permanent". 
+                  Exemple: /ban @user 30m Spam répété
                 </p>
               </div>
             ) : null}

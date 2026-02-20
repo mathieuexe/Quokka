@@ -148,7 +148,11 @@ export async function getAdminSubscriptions(_req: Request, res: Response): Promi
 
 export async function getAdminUserDetails(req: Request, res: Response): Promise<void> {
   const params = adminUserParamsSchema.parse(req.params);
-  const [users, servers] = await Promise.all([listUsers(), listServersByUser(params.userId)]);
+  const [users, servers, availableBadges] = await Promise.all([
+    listUsers(),
+    listServersByUser(params.userId),
+    listAvailableBadges()
+  ]);
   const user = users.find((entry) => entry.id === params.userId);
   if (!user) {
     res.status(404).json({ message: "Utilisateur introuvable." });
@@ -159,7 +163,8 @@ export async function getAdminUserDetails(req: Request, res: Response): Promise<
       ...user,
       customer_reference: generateCustomerReference(user.pseudo, user.id)
     },
-    servers
+    servers,
+    availableBadges
   });
 }
 

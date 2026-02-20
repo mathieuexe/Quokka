@@ -21,8 +21,6 @@ export function LoginPage(): JSX.Element {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const apiBase = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
-  const ssoEnabled = import.meta.env.VITE_AUTHENTIK_SSO_ENABLED === "true";
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -65,6 +63,12 @@ export function LoginPage(): JSX.Element {
 
         <form className="card form auth-form-card" onSubmit={onSubmit}>
           <h2>{t("auth.loginButton")}</h2>
+          <div className="auth-info-box">
+            <p>
+              L’inscription et la connexion via Discord ou Stoat seront bientôt disponibles et sont en cours de
+              développement. Merci pour votre patience.
+            </p>
+          </div>
           <label>
             {t("auth.email")}
             <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
@@ -77,11 +81,6 @@ export function LoginPage(): JSX.Element {
           <button className="btn auth-submit-btn" type="submit" disabled={pending}>
             {pending ? t("common.loading") : t("auth.loginButton")}
           </button>
-          {ssoEnabled && (
-            <a className="btn btn-ghost" href={`${apiBase}/auth/sso/authentik/login?next=/admin`}>
-              {t("auth.adminSso")}
-            </a>
-          )}
           <p className="auth-switch-link">
             {t("auth.noAccount")} <Link to="/register">{t("auth.register")}</Link>
           </p>

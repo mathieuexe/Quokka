@@ -1,8 +1,8 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { Link, NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, CreditCard, LogOut, Menu, Search, ShieldCheck, User, X, Zap } from "lucide-react";
+import { ChevronDown, CreditCard, LogOut, Menu, ShieldCheck, User, X, Zap } from "lucide-react";
 
 type HeaderProps = {
   variant?: "default" | "home";
@@ -11,11 +11,8 @@ type HeaderProps = {
 export function Header({ variant = "default" }: HeaderProps): JSX.Element {
   const { isAuthenticated, user, logout } = useAuth();
   const { t } = useTranslation();
-  const location = useLocation();
-  const navigate = useNavigate();
   const [profileOpen, setProfileOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [query, setQuery] = useState("");
   const isAdmin = user?.role === "admin";
 
   const navItems = useMemo(() => {
@@ -30,13 +27,6 @@ export function Header({ variant = "default" }: HeaderProps): JSX.Element {
     return base;
   }, [isAdmin, t]);
 
-  useEffect(() => {
-    if (location.pathname !== "/") return;
-    const params = new URLSearchParams(location.search);
-    const nextQuery = params.get("search") ?? "";
-    setQuery(nextQuery);
-  }, [location.pathname, location.search]);
-
   function closeMenus(): void {
     setProfileOpen(false);
     setMobileOpen(false);
@@ -45,17 +35,6 @@ export function Header({ variant = "default" }: HeaderProps): JSX.Element {
   function handleLogout(): void {
     closeMenus();
     logout();
-  }
-
-  function onSearchSubmit(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault();
-    closeMenus();
-    const normalized = query.trim();
-    if (!normalized) {
-      navigate("/", { replace: location.pathname === "/" });
-      return;
-    }
-    navigate(`/?search=${encodeURIComponent(normalized)}`);
   }
 
   return (
@@ -69,18 +48,6 @@ export function Header({ variant = "default" }: HeaderProps): JSX.Element {
               <span>{t("header.tagline")}</span>
             </span>
           </Link>
-
-          <form className="site-header-search" onSubmit={onSearchSubmit} role="search">
-            <span className="site-header-search-icon" aria-hidden="true">
-              <Search size={18} />
-            </span>
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t("header.searchPlaceholder")}
-              aria-label={t("header.searchAria")}
-            />
-          </form>
         </div>
 
         <nav className="site-header-tabs" aria-label={t("header.mainMenu")}>

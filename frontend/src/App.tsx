@@ -14,7 +14,6 @@ import { OffersPage } from "./pages/OffersPage";
 import { OrderThankYouPage } from "./pages/OrderThankYouPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { ServerPage } from "./pages/ServerPage";
-import { SsoAuthentikPage } from "./pages/SsoAuthentikPage";
 import { SubscriptionsPage } from "./pages/SubscriptionsPage";
 import { UserProfilePage } from "./pages/UserProfilePage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
@@ -27,6 +26,7 @@ import { AdminSettingsPage } from "./admin/AdminSettingsPage";
 import { AdminSubscriptionsPage } from "./admin/AdminSubscriptionsPage";
 import { AdminManualActivationPage } from "./admin/AdminManualActivationPage";
 import { AdminPromoCodesPage } from "./admin/AdminPromoCodesPage";
+import { AdminWarningsPage } from "./admin/AdminWarningsPage";
 
 function PrivateRoute({ children }: { children: JSX.Element }): JSX.Element {
   const { isAuthenticated } = useAuth();
@@ -44,6 +44,10 @@ export default function App(): JSX.Element {
   const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
   const location = useLocation();
   const isAdminArea = location.pathname.startsWith("/admin");
+  const betaVersion = "v1.2";
+  const betaMessageLine1 = `Quokka est en phase de bêta ouverte ${betaVersion}. Certaines fonctionnalités peuvent être instables.`;
+  const betaMessageLine2 =
+    "Inscrivez-vous à la bêta publique sur notre serveur Stoat afin de nous faire part de vos retours et améliorer la plateforme.";
 
   useEffect(() => {
     const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
@@ -80,6 +84,19 @@ export default function App(): JSX.Element {
 
   return (
     <div className={`app-shell ${isAdminArea ? "app-shell-admin" : ""}`}>
+      {!isAdminArea && (
+        <div className="site-header-announcement" role="status" aria-live="polite">
+          <div className="site-header-announcement-track">
+            <span className="site-header-announcement-message">
+              <span>{betaMessageLine1}</span>
+              <span>{betaMessageLine2}</span>
+            </span>
+            <a className="site-header-announcement-btn" href="https://stt.gg/PdFsKC2w" target="_blank" rel="noreferrer">
+              Rejoindre Stoat
+            </a>
+          </div>
+        </div>
+      )}
       {!isAdminArea && <EmailVerificationBanner />}
       {!isAdminArea && <Header variant="home" />}
       <main className={isAdminArea ? "main-content admin-main-content" : "main-content"}>
@@ -90,7 +107,6 @@ export default function App(): JSX.Element {
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/verify-2fa" element={<Verify2FAPage />} />
-          <Route path="/sso/authentik" element={<SsoAuthentikPage />} />
           <Route
             path="/dashboard"
             element={
@@ -147,6 +163,7 @@ export default function App(): JSX.Element {
             <Route path="servers" element={<AdminServersPage />} />
             <Route path="settings" element={<AdminSettingsPage />} />
             <Route path="subscriptions" element={<AdminSubscriptionsPage />} />
+            <Route path="warnings" element={<AdminWarningsPage />} />
             <Route path="manual-activation" element={<AdminManualActivationPage />} />
             <Route path="promo-codes" element={<AdminPromoCodesPage />} />
           </Route>

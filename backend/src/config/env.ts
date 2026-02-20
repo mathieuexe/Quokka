@@ -15,11 +15,7 @@ const envSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().min(1),
   STRIPE_PUBLISHABLE_KEY: z.string().min(1),
   RESEND_API_KEY: z.string().min(1),
-  DEEPL_API_KEY: z.string().min(1),
-  AUTHENTIK_ISSUER: z.string().url().optional(),
-  AUTHENTIK_CLIENT_ID: z.string().min(1).optional(),
-  AUTHENTIK_CLIENT_SECRET: z.string().min(1).optional(),
-  AUTHENTIK_REDIRECT_URI: z.string().url().optional()
+  DEEPL_API_KEY: z.string().min(1)
 });
 
 export const env = envSchema.parse(process.env);

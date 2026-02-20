@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { login, register, verifyEmail, verify2FA, resendCode, authentikAdminSsoCallback, authentikAdminSsoLogin } from "../controllers/authController.js";
+import { login, register, verifyEmail, verify2FA, resendCode } from "../controllers/authController.js";
 
 export const authRoutes = Router();
 
@@ -8,5 +8,3 @@ authRoutes.post("/login", login);
 authRoutes.post("/verify-email", verifyEmail);
 authRoutes.post("/verify-2fa", verify2FA);
 authRoutes.post("/resend-code", resendCode);
-authRoutes.get("/sso/authentik/login", authentikAdminSsoLogin);
-authRoutes.get("/sso/authentik/callback", authentikAdminSsoCallback);

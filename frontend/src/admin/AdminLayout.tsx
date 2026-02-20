@@ -17,6 +17,7 @@ export function AdminLayout(): JSX.Element {
           <NavLink to="/admin/users">Utilisateurs</NavLink>
           <NavLink to="/admin/servers">Serveurs</NavLink>
           <NavLink to="/admin/subscriptions">Abonnements</NavLink>
+          <NavLink to="/admin/warnings">Avertissements</NavLink>
           <NavLink to="/admin/manual-activation">Activation manuelle</NavLink>
           <NavLink to="/admin/promo-codes">Codes promo</NavLink>
           <NavLink to="/admin/settings">Paramétrage du site</NavLink>

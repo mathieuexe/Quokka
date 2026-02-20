@@ -61,14 +61,44 @@ export async function postChatMessage(req: Request, res: Response): Promise<void
   }
 
   // Vérifier si l'utilisateur est banni
-  if (await isUserBanned(userId)) {
-    res.status(403).json({ message: "Vous êtes banni du tchat." });
+  const ban = await isUserBanned(userId);
+  if (ban) {
+    let message = "Vous êtes banni du tchat.";
+    if (ban.expires_at) {
+      const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+      message = `Vous êtes banni du tchat jusqu'au ${dateFormatter.format(new Date(ban.expires_at))}.`;
+    }
+    if (ban.reason) {
+      message += ` Motif : ${ban.reason}`;
+    }
+    res.status(403).json({ message });
     return;
   }
 
   // Vérifier si l'utilisateur est muet
-  if (await isUserMuted(userId)) {
-    res.status(403).json({ message: "Vous êtes muet et ne pouvez pas envoyer de messages." });
+  const mute = await isUserMuted(userId);
+  if (mute) {
+    let message = "Vous êtes muet et ne pouvez pas envoyer de messages.";
+    if (mute.expires_at) {
+      const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+      message = `Vous êtes muet jusqu'au ${dateFormatter.format(new Date(mute.expires_at))}.`;
+    }
+    if (mute.reason) {
+      message += ` Motif : ${mute.reason}`;
+    }
+    res.status(403).json({ message });
     return;
   }
 
